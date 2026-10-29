@@ -81,6 +81,8 @@ interface Attendee {
 export interface TierStat {
   name: string;
   sold: number;
+  /** Portion of `sold` that came from AASU hold tickets. */
+  aasuSold: number;
   total: number;
   price: number;
 }
@@ -195,7 +197,7 @@ export async function fetchStats(): Promise<Stats> {
         row.total += tc.quantity_total;
         if (!m.aasu) row.price = cents(tc.cost) / 100;
       } else {
-        sortedTiers.push({ name: m.tierName, sold: 0, total: tc.quantity_total, price: cents(tc.cost) / 100 });
+        sortedTiers.push({ name: m.tierName, sold: 0, aasuSold: 0, total: tc.quantity_total, price: cents(tc.cost) / 100 });
       }
     }
 
@@ -220,14 +222,23 @@ export async function fetchStats(): Promise<Stats> {
 
   // Walk attendees (one per ticket). Refunded/cancelled are excluded by status=attending,
   // but we double-check in case the filter is loosened later.
+  // Cached continuation pages can overlap while sales are coming in; count each attendee once.
+  const seen = new Set<string>();
+  let dupes = 0;
   for (const a of attendees) {
     if (a.cancelled || a.refunded) continue;
+    if (seen.has(a.id)) {
+      dupes += 1;
+      continue;
+    }
+    seen.add(a.id);
     const m = ticketMap.get(a.ticket_class_id);
     if (!m) continue;
     const st = acc.get(m.school.key)!;
     st.sold += 1;
     const code = a.promotional_code?.code ?? "";
-    if (m.aasu || code.toUpperCase().startsWith(AASU_CODE_PREFIX)) st.aasuSold += 1;
+    const isAasu = m.aasu || code.toUpperCase().startsWith(AASU_CODE_PREFIX);
+    if (isAasu) st.aasuSold += 1;
     else st.publicSold += 1;
     const base = cents(a.costs?.base_price);
     const gross = cents(a.costs?.gross);
@@ -235,8 +246,12 @@ export async function fetchStats(): Promise<Stats> {
     st.grossRevenue += gross / 100;
     st.feesCollected += (cents(a.costs?.eventbrite_fee) + cents(a.costs?.payment_fee)) / 100;
     const t = st.sortedTiers.find((x) => x.name === m.tierName);
-    if (t) t.sold += 1;
+    if (t) {
+      t.sold += 1;
+      if (isAasu) t.aasuSold += 1;
+    }
   }
+  if (dupes > 0) notes.push(`Skipped ${dupes} duplicate attendee records.`);
 
   const schools = SCHOOLS.map((s) => {
     const st = acc.get(s.key)!;

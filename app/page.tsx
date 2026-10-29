@@ -77,7 +77,7 @@ export default async function Page() {
             {stats.schools.flatMap((s) =>
               s.sortedTiers.map((tier) => (
                 <tr key={`${s.key}-${tier.name}`}>
-                  <td>{s.key}</td><td style={{ textAlign: "left" }}>{tier.name}</td><td>{usd(tier.price)}</td>
+                  <td>{s.key}</td><td>{tier.name}</td><td>{usd(tier.price)}</td>
                   <td>{num(tier.sold)}</td><td>{num(tier.total)}</td><td>{num(Math.max(0, tier.total - tier.sold))}</td>
                 </tr>
               ))
@@ -88,6 +88,28 @@ export default async function Page() {
           </tfoot>
         </table>
       </div>
+
+      <div className="section-title">AASU sales vs holds</div>
+      <div className="card" style={{ overflowX: "auto" }}>
+        <table>
+          <thead>
+            <tr><th>School</th><th>By tier</th><th>Hold</th><th>Sold</th><th>Left</th><th>% sold</th></tr>
+          </thead>
+          <tbody>
+            {stats.schools.map((s) => (
+              <tr key={`aasu-${s.key}`}>
+                <td>{s.key}</td>
+                <td>{s.sortedTiers.filter((x) => x.aasuSold > 0).map((x) => `${x.name} ${num(x.aasuSold)}`).join(" · ") || "None yet"}</td>
+                <td>{num(s.aasuHold)}</td><td>{num(s.aasuSold)}</td><td>{num(s.aasuRemaining)}</td><td>{pct(s.aasuSold, s.aasuHold)}%</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr><td colSpan={2}>Total</td><td>{num(t.aasuHold)}</td><td>{num(t.aasuSold)}</td><td>{num(t.aasuRemaining)}</td><td>{pct(t.aasuSold, t.aasuHold)}%</td></tr>
+          </tfoot>
+        </table>
+      </div>
+      <div className="sub" style={{ marginTop: 6 }}>AASU sales are also included in the tier table above.</div>
 
       <div className="notes">
         AASU sales are tickets from the AASU hold ticket types (or bought with a code starting with <code>AASU_</code>). Hold sizes are read from Eventbrite: each school&apos;s allocation minus its section capacity. Public capacity is the allocation minus the hold. Refunded and cancelled tickets are excluded.
