@@ -1,4 +1,4 @@
-import { AASU_CODE_PREFIX, EVENT_ID, SCHOOLS, SchoolConfig, SchoolKey } from "./config";
+import { AASU_CODE_PREFIX, AASU_DISPLAY_RE, EVENT_ID, SCHOOLS, SchoolConfig, SchoolKey } from "./config";
 
 const API = "https://www.eventbriteapi.com/v3";
 
@@ -44,6 +44,7 @@ interface Money { value: number; major_value: string; currency: string }
 interface TicketClass {
   id: string;
   name: string;
+  display_name?: string;
   quantity_total: number;
   quantity_sold: number;
   cost: Money | null;
@@ -130,53 +131,85 @@ function cents(m?: Money | null): number {
   return m?.value ?? 0;
 }
 
-function schoolForTicket(tc: TicketClass, tiersById: Map<string, InventoryTier>): SchoolConfig | undefined {
-  const tier = tc.inventory_tier_id ? tiersById.get(tc.inventory_tier_id) : undefined;
-  if (tier) {
-    const s = SCHOOLS.find((s) => tier.name.includes(s.sectionMatch));
-    if (s) return s;
-  }
-  return SCHOOLS.find((s) => tc.name.startsWith(s.ticketMatch));
+interface TicketMapping {
+  school: SchoolConfig;
+  /** True for AASU hold ticket classes (their own inventory tier, "AASU - <KEY> " display_name). */
+  aasu: boolean;
+  /** Tier label shared by regular and AASU classes, e.g. "Food Only". */
+  tierName: string;
+}
+
+function mapTicket(tc: TicketClass): TicketMapping | undefined {
+  const display = tc.display_name ?? "";
+  const tierName = tc.name.replace(AASU_DISPLAY_RE, "").trim();
+  const bySection = SCHOOLS.find((s) => tc.inventory_tier_id === s.sectionTierId);
+  if (bySection) return { school: bySection, aasu: false, tierName };
+  const aasuKey = display.match(AASU_DISPLAY_RE)?.[1]?.toUpperCase();
+  const byAasu = aasuKey ? SCHOOLS.find((s) => s.key === aasuKey) : undefined;
+  if (byAasu) return { school: byAasu, aasu: true, tierName };
+  // Tier id missing on the class: fall back to the section name prefix of display_name.
+  const byName = SCHOOLS.find((s) => display.startsWith(s.sectionMatch));
+  if (byName) return { school: byName, aasu: false, tierName };
+  return undefined;
 }
 
 export async function fetchStats(): Promise<Stats> {
   const notes: string[] = [];
 
+  let tiersFailed = false;
   const [ticketClasses, tiers, attendees] = await Promise.all([
     getAll<TicketClass>(`/events/${EVENT_ID}/ticket_classes/`, "ticket_classes"),
     getAll<InventoryTier>(`/events/${EVENT_ID}/inventory_tiers/`, "inventory_tiers").catch((e) => {
-      notes.push(`Sections unavailable (${String(e.message).slice(0, 80)}); using contracted allocations.`);
+      tiersFailed = true;
+      notes.push(`Sections unavailable (${String(e.message).slice(0, 80)}); using AASU_HOLDS fallback.`);
       return [] as InventoryTier[];
     }),
-    getAll<Attendee>(`/events/${EVENT_ID}/attendees/`, "attendees", { status: "attending" }),
+    getAll<Attendee>(`/events/${EVENT_ID}/attendees/`, "attendees", { status: "attending", expand: "promotional_code" }),
   ]);
 
   const tiersById = new Map(tiers.map((t) => [t.id, t]));
-  const ticketToSchool = new Map<string, SchoolConfig>();
+  const ticketMap = new Map<string, TicketMapping>();
   for (const tc of ticketClasses) {
-    const s = schoolForTicket(tc, tiersById);
-    if (s) ticketToSchool.set(tc.id, s);
-    else notes.push(`Unmapped ticket type: ${tc.name}`);
+    const m = mapTicket(tc);
+    if (m) ticketMap.set(tc.id, m);
+    else notes.push(`Unmapped ticket type: ${tc.display_name ?? tc.name}`);
   }
 
   // Per-school accumulators
   const acc = new Map<SchoolKey, SchoolStat>();
   for (const s of SCHOOLS) {
-    const tier = tiers.find((t) => t.name.includes(s.sectionMatch));
-    const allocation = tier?.quantity_total ?? s.allocation;
+    const allocation = s.allocation;
+    // The section's capacity is the allocation minus whatever AASU currently holds back.
+    const section = tiersById.get(s.sectionTierId);
+    let aasuHold = s.fallbackAasuHold;
+    if (section) aasuHold = Math.max(0, allocation - section.quantity_total);
+    else if (!tiersFailed) notes.push(`Section ${s.sectionTierId} (${s.key}) not found; using AASU_HOLDS fallback.`);
+
+    // One row per tier name, combining regular and AASU classes.
+    const sortedTiers: TierStat[] = [];
+    for (const tc of ticketClasses) {
+      const m = ticketMap.get(tc.id);
+      if (m?.school.key !== s.key) continue;
+      const row = sortedTiers.find((t) => t.name === m.tierName);
+      if (row) {
+        row.total += tc.quantity_total;
+        if (!m.aasu) row.price = cents(tc.cost) / 100;
+      } else {
+        sortedTiers.push({ name: m.tierName, sold: 0, total: tc.quantity_total, price: cents(tc.cost) / 100 });
+      }
+    }
+
     acc.set(s.key, {
       key: s.key,
       name: s.name,
       allocation,
       sold: 0,
-      sortedTiers: ticketClasses
-        .filter((tc) => ticketToSchool.get(tc.id)?.key === s.key)
-        .map((tc) => ({ name: tc.name.replace(/^.*?:\s*/, ""), sold: 0, total: tc.quantity_total, price: cents(tc.cost) / 100 })),
+      sortedTiers,
       publicSold: 0,
       aasuSold: 0,
-      aasuHold: s.aasuHold,
+      aasuHold,
       aasuRemaining: 0,
-      publicCapacity: Math.max(0, allocation - s.aasuHold),
+      publicCapacity: Math.max(0, allocation - aasuHold),
       publicRemaining: 0,
       totalRemaining: 0,
       baseRevenue: 0,
@@ -189,20 +222,19 @@ export async function fetchStats(): Promise<Stats> {
   // but we double-check in case the filter is loosened later.
   for (const a of attendees) {
     if (a.cancelled || a.refunded) continue;
-    const school = ticketToSchool.get(a.ticket_class_id);
-    if (!school) continue;
-    const st = acc.get(school.key)!;
+    const m = ticketMap.get(a.ticket_class_id);
+    if (!m) continue;
+    const st = acc.get(m.school.key)!;
     st.sold += 1;
     const code = a.promotional_code?.code ?? "";
-    if (code.toUpperCase().startsWith(AASU_CODE_PREFIX)) st.aasuSold += 1;
+    if (m.aasu || code.toUpperCase().startsWith(AASU_CODE_PREFIX)) st.aasuSold += 1;
     else st.publicSold += 1;
     const base = cents(a.costs?.base_price);
     const gross = cents(a.costs?.gross);
     st.baseRevenue += base / 100;
     st.grossRevenue += gross / 100;
     st.feesCollected += (cents(a.costs?.eventbrite_fee) + cents(a.costs?.payment_fee)) / 100;
-    const tierName = a.ticket_class_name.replace(/^.*?:\s*/, "");
-    const t = st.sortedTiers.find((x) => x.name === tierName);
+    const t = st.sortedTiers.find((x) => x.name === m.tierName);
     if (t) t.sold += 1;
   }
 

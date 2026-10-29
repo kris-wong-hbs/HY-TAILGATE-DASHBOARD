@@ -90,7 +90,7 @@ export default async function Page() {
       </div>
 
       <div className="notes">
-        AASU sales are attendees who checked out with a code starting with <code>AASU_</code>. Public capacity is the school allocation minus its AASU hold; change holds with the <code>AASU_HOLDS</code> env var. Refunded and cancelled tickets are excluded.
+        AASU sales are tickets from the AASU hold ticket types (or bought with a code starting with <code>AASU_</code>). Hold sizes are read from Eventbrite: each school&apos;s allocation minus its section capacity. Public capacity is the allocation minus the hold. Refunded and cancelled tickets are excluded.
         {stats.notes.length > 0 && <div style={{ marginTop: 6 }}>{stats.notes.join(" · ")}</div>}
       </div>
     </main>
