@@ -54,11 +54,5 @@ th:first-child, td:first-child { text-align: left; }
 th { color: var(--muted); font-weight: 600; font-size: 12px; }
 tfoot td { font-weight: 700; }
 tr.subtotal td { font-weight: 600; background: var(--line); }
-.split .g { border-left: 1px solid var(--line); }
-.split tr.group th { text-align: center; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; border-bottom: 0; padding-bottom: 0; }
-.split tr.group th.pub { color: var(--crimson); }
-.split tr.group th.aasu { color: var(--gold); }
-.split tr.has-detail td { border-bottom: 0; }
-.split tr.detail td { text-align: left; color: var(--muted); font-size: 12px; padding-top: 0; }
 .notes { font-size: 12px; color: var(--muted); margin-top: 18px; }
 .err { background: #fff2f2; color: #8a1f1f; border: 1px solid #f0c7c7; border-radius: 10px; padding: 14px; }
