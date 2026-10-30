@@ -92,29 +92,25 @@ export default async function Page() {
       <div className="card" style={{ overflowX: "auto" }}>
         <table>
           <thead>
-            <tr><th>School</th><th>Tier</th><th>Price</th><th>Sold</th><th>Tier max</th><th>Left</th></tr>
+            <tr><th>School</th><th>Tier</th><th>Qty sold</th><th>Qty allocated</th><th>% sold</th><th>Qty left to sell</th></tr>
           </thead>
           <tbody>
-            {stats.schools.flatMap((s) => [
-              ...s.sortedTiers.map((tier) => (
+            {stats.schools.flatMap((s) =>
+              s.sortedTiers.map((tier) => (
                 <tr key={`${s.key}-${tier.name}`}>
-                  <td>{s.key}</td><td>{tier.name}</td><td>{usd(tier.price)}</td>
-                  <td>{num(tier.sold)}</td><td>{num(tier.total)}</td><td>{num(Math.max(0, tier.total - tier.sold))}</td>
+                  <td>{s.key}</td><td>{tier.name}</td>
+                  <td>{num(tier.sold)}</td><td>{num(tier.total)}</td><td>{pct(tier.sold, tier.total)}%</td>
+                  <td>{num(Math.max(0, tier.total - tier.sold))}</td>
                 </tr>
-              )),
-              <tr key={`${s.key}-subtotal`} className="subtotal">
-                <td>{s.key}</td><td>Subtotal (allocation)</td><td></td>
-                <td>{num(s.sold)}</td><td>{num(s.allocation)}</td><td>{num(s.totalRemaining)}</td>
-              </tr>,
-            ])}
+              ))
+            )}
           </tbody>
           <tfoot>
-            <tr><td colSpan={3}>Total (allocation)</td><td>{num(t.sold)}</td><td>{num(t.allocation)}</td><td>{num(t.totalRemaining)}</td></tr>
+            <tr><td colSpan={2}>Total</td><td>{num(t.sold)}</td><td>{num(t.allocation)}</td><td>{pct(t.sold, t.allocation)}%</td><td>{num(t.totalRemaining)}</td></tr>
           </tfoot>
         </table>
       </div>
-
-      <div className="sub" style={{ marginTop: 6 }}>Tier max is each tier&apos;s share of the school allocation. Sold counts every ticket sold in the tier, whoever distributed it.</div>
+      <div className="sub" style={{ marginTop: 6 }}>Qty allocated is each tier&apos;s share of the school allocation. Qty sold counts every ticket sold in the tier, whoever distributed it.</div>
 
       <div className="section-title">AASU sales vs holds</div>
       <div className="card" style={{ overflowX: "auto" }}>
