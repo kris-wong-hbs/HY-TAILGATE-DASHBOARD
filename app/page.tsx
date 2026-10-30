@@ -78,9 +78,7 @@ export default async function Page() {
               ...s.sortedTiers.map((tier) => (
                 <tr key={`${s.key}-${tier.name}`}>
                   <td>{s.key}</td><td>{tier.name}</td><td>{usd(tier.price)}</td>
-                  <td>{num(tier.sold)}</td><td>{num(tier.total)}</td>
-                  {/* Tiers share the school's section, so a tier can never have more left than the school does. */}
-                  <td>{num(Math.min(Math.max(0, tier.total - tier.sold), s.totalRemaining))}</td>
+                  <td>{num(tier.sold)}</td><td>{num(tier.total)}</td><td>{num(Math.max(0, tier.total - tier.sold))}</td>
                 </tr>
               )),
               <tr key={`${s.key}-subtotal`} className="subtotal">
@@ -95,7 +93,7 @@ export default async function Page() {
         </table>
       </div>
 
-      <div className="sub" style={{ marginTop: 6 }}>Tier max is Eventbrite&apos;s per-ticket-type cap. Tiers share their school&apos;s allocation, so tier maxes overlap and don&apos;t add up to it; Left is limited to what the school has left.</div>
+      <div className="sub" style={{ marginTop: 6 }}>Tier max is each tier&apos;s share of the school allocation (Eventbrite ticket capacity). Sold and Left include AASU hold tickets in that tier.</div>
 
       <div className="section-title">AASU sales vs holds</div>
       <div className="card" style={{ overflowX: "auto" }}>

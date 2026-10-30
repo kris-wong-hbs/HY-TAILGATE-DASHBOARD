@@ -47,6 +47,8 @@ interface TicketClass {
   display_name?: string;
   quantity_total: number;
   quantity_sold: number;
+  /** The tier's share of the school allocation, shared by its regular and AASU classes. */
+  capacity?: number;
   cost: Money | null;
   fee: Money | null;
   inventory_tier_id?: string | null;
@@ -202,17 +204,20 @@ export async function fetchStats(): Promise<Stats> {
     if (section) aasuHold = Math.max(0, allocation - section.quantity_total);
     else if (!tiersFailed) notes.push(`Section ${s.sectionTierId} (${s.key}) not found; using AASU_HOLDS fallback.`);
 
-    // One row per tier name, combining regular and AASU classes.
+    // One row per tier name, combining regular and AASU classes. The tier's max is the
+    // regular class's `capacity` (tiers add up to the allocation); AASU classes draw from
+    // the same pool, so their caps aren't added. quantity_total excludes the AASU hold.
     const sortedTiers: TierStat[] = [];
     for (const tc of ticketClasses) {
       const m = ticketMap.get(tc.id);
       if (m?.school.key !== s.key) continue;
+      const total = tc.capacity ?? tc.quantity_total;
       const row = sortedTiers.find((t) => t.name === m.tierName);
-      if (row) {
-        row.total += tc.quantity_total;
-        if (!m.aasu) row.price = cents(tc.cost) / 100;
-      } else {
-        sortedTiers.push({ name: m.tierName, sold: 0, aasuSold: 0, total: tc.quantity_total, price: cents(tc.cost) / 100 });
+      if (!row) {
+        sortedTiers.push({ name: m.tierName, sold: 0, aasuSold: 0, total, price: cents(tc.cost) / 100 });
+      } else if (!m.aasu) {
+        row.total = total;
+        row.price = cents(tc.cost) / 100;
       }
     }
 
