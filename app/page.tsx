@@ -95,27 +95,50 @@ export default async function Page() {
 
       <div className="sub" style={{ marginTop: 6 }}>Tier max is each tier&apos;s share of the school allocation. Sold counts every ticket sold in the tier, whoever distributed it.</div>
 
-      <div className="section-title">AASU sales vs holds</div>
+      <div className="section-title">Public vs AASU split</div>
       <div className="card" style={{ overflowX: "auto" }}>
-        <table>
+        <table className="split">
           <thead>
-            <tr><th>School</th><th>By tier</th><th>Hold</th><th>Sold</th><th>Left</th><th>% sold</th></tr>
+            <tr className="group">
+              <th></th><th></th>
+              <th colSpan={3} className="g pub">Public sale</th>
+              <th colSpan={4} className="g aasu">AASU hold</th>
+            </tr>
+            <tr>
+              <th>School</th><th>Allocation</th>
+              <th className="g">Capacity</th><th>Sold</th><th>Left</th>
+              <th className="g">Hold</th><th>Sold</th><th>Left</th><th>% sold</th>
+            </tr>
           </thead>
           <tbody>
-            {stats.schools.map((s) => (
-              <tr key={`aasu-${s.key}`}>
-                <td>{s.key}</td>
-                <td>{s.sortedTiers.filter((x) => x.aasuSold > 0).map((x) => `${x.name} ${num(x.aasuSold)}`).join(" · ") || "None yet"}</td>
-                <td>{num(s.aasuHold)}</td><td>{num(s.aasuSold)}</td><td>{num(s.aasuRemaining)}</td><td>{pct(s.aasuSold, s.aasuHold)}%</td>
-              </tr>
-            ))}
+            {stats.schools.flatMap((s) => {
+              const aasuTiers = s.sortedTiers.filter((x) => x.aasuSold > 0);
+              return [
+                <tr key={`split-${s.key}`} className={aasuTiers.length > 0 ? "has-detail" : undefined}>
+                  <td>{s.key}</td><td>{num(s.allocation)}</td>
+                  <td className="g">{num(s.publicCapacity)}</td><td>{num(s.publicSold)}</td><td>{num(s.publicRemaining)}</td>
+                  <td className="g">{num(s.aasuHold)}</td><td>{num(s.aasuSold)}</td><td>{num(s.aasuRemaining)}</td><td>{pct(s.aasuSold, s.aasuHold)}%</td>
+                </tr>,
+                ...(aasuTiers.length > 0
+                  ? [
+                      <tr key={`split-${s.key}-tiers`} className="detail">
+                        <td colSpan={9}>AASU sold by tier: {aasuTiers.map((x) => `${x.name} ${num(x.aasuSold)}`).join(" · ")}</td>
+                      </tr>,
+                    ]
+                  : []),
+              ];
+            })}
           </tbody>
           <tfoot>
-            <tr><td colSpan={2}>Total</td><td>{num(t.aasuHold)}</td><td>{num(t.aasuSold)}</td><td>{num(t.aasuRemaining)}</td><td>{pct(t.aasuSold, t.aasuHold)}%</td></tr>
+            <tr>
+              <td>Total</td><td>{num(t.allocation)}</td>
+              <td className="g">{num(t.allocation - t.aasuHold)}</td><td>{num(t.publicSold)}</td><td>{num(t.publicRemaining)}</td>
+              <td className="g">{num(t.aasuHold)}</td><td>{num(t.aasuSold)}</td><td>{num(t.aasuRemaining)}</td><td>{pct(t.aasuSold, t.aasuHold)}%</td>
+            </tr>
           </tfoot>
         </table>
       </div>
-      <div className="sub" style={{ marginTop: 6 }}>AASU sales are also included in the tier table above.</div>
+      <div className="sub" style={{ marginTop: 6 }}>Each school&apos;s allocation is split between the public sale and the AASU hold (capacity + hold = allocation). Both channels&apos; sales count toward the tier table above.</div>
 
       <div className="notes">
         AASU sales are tickets from the AASU hold ticket types (or bought with a code starting with <code>AASU_</code>). Hold sizes are read from Eventbrite: each school&apos;s allocation minus its section capacity. Public capacity is the allocation minus the hold. Refunded and cancelled tickets are excluded.
