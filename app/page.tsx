@@ -93,7 +93,7 @@ export default async function Page() {
         </table>
       </div>
 
-      <div className="sub" style={{ marginTop: 6 }}>Tier max is each tier&apos;s share of the school allocation (Eventbrite ticket capacity). Sold and Left include AASU hold tickets in that tier.</div>
+      <div className="sub" style={{ marginTop: 6 }}>Tier max is each tier&apos;s share of the school allocation. Sold counts every ticket sold in the tier, whoever distributed it.</div>
 
       <div className="section-title">AASU sales vs holds</div>
       <div className="card" style={{ overflowX: "auto" }}>
