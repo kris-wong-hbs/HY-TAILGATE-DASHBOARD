@@ -298,3 +298,19 @@ export async function fetchStats(): Promise<Stats> {
 
   return { eventId: EVENT_ID, generatedAt: new Date().toISOString(), schools, totals, notes };
 }
+
+/** Stats with every AASU field removed, for parties that don't see the AASU hold. */
+export function withoutAasu(stats: Stats) {
+  const { aasuSold, aasuHold, aasuRemaining, publicSold, publicRemaining, ...totals } = stats.totals;
+  return {
+    eventId: stats.eventId,
+    generatedAt: stats.generatedAt,
+    schools: stats.schools.map(
+      ({ aasuSold, aasuHold, aasuRemaining, publicSold, publicCapacity, publicRemaining, sortedTiers, ...rest }) => ({
+        ...rest,
+        sortedTiers: sortedTiers.map(({ aasuSold, ...tier }) => tier),
+      }),
+    ),
+    totals,
+  };
+}

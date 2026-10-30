@@ -7,10 +7,10 @@ Live ticket sales for the 2026 Harvard-Yale Tailgate, read from Eventbrite and b
 1. Import this repo in Vercel (New Project → Import).
 2. Add environment variables (Settings → Environment Variables):
    - `EVENTBRITE_TOKEN` — your Eventbrite private token (Eventbrite → Account Settings → Developer Links → API Keys → Private token). Required.
-   - `DASHBOARD_PASSWORD` — password viewers must enter. Required; the site refuses to serve without it.
+   - `PASSWORD_HBS`, `PASSWORD_HLS`, `PASSWORD_SOM`, `PASSWORD_YLS`, `PASSWORD_AASU` — one password per party. A party can't sign in until its variable is set.
    - `AASU_HOLDS` — optional fallback, used only if Eventbrite's sections can't be read. Format `HBS=125,HLS=15,SOM=40,YLS=20`.
    - `EVENTBRITE_EVENT_ID` — optional, defaults to `2003945094723`.
-3. Deploy. Visitors get a browser password prompt; enter any username and the password.
+3. Deploy. Visitors are sent to `/login`, pick their party and enter its password. HBS and AASU see everything; HLS, SOM and YLS see the dashboard with all AASU information removed (including from `/api/stats`). The signed-in school's rows are highlighted.
 
 Data refreshes about once a minute. `/api/stats` returns the same numbers as JSON.
 

@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+import { partyFromToken, seesAasu, SESSION_COOKIE } from "@/lib/auth";
 import { fetchStats, SchoolStat } from "@/lib/eventbrite";
 
 export const dynamic = "force-dynamic";
@@ -27,11 +29,12 @@ function aasuByPackage(s: SchoolStat): Partial<Record<Package, number>> {
   return out;
 }
 
-function SchoolCard({ s }: { s: SchoolStat }) {
-  const pubW = pct(s.publicSold, s.allocation);
-  const aasuW = pct(s.aasuSold, s.allocation);
+function SchoolCard({ s, full, mine }: { s: SchoolStat; full: boolean; mine: boolean }) {
+  // Without the AASU view, the bar is one color for everything sold.
+  const pubW = full ? pct(s.publicSold, s.allocation) : pct(s.sold, s.allocation);
+  const aasuW = full ? pct(s.aasuSold, s.allocation) : 0;
   return (
-    <div className="card">
+    <div className={mine ? "card mine" : "card"}>
       <h2>{s.name}</h2>
       <div className="bar" aria-label={`${s.sold} of ${s.allocation} sold`}>
         <span className="pub" style={{ width: `${pubW}%` }} />
@@ -40,10 +43,14 @@ function SchoolCard({ s }: { s: SchoolStat }) {
       <div className="sub" style={{ marginBottom: 8 }}>
         {num(s.sold)} of {num(s.allocation)} sold ({pct(s.sold, s.allocation)}%)
       </div>
-      <div className="row"><span className="k">Public sold</span><span className="v">{num(s.publicSold)} / {num(s.publicCapacity)}</span></div>
-      <div className="row"><span className="k">Public remaining</span><span className="v">{num(s.publicRemaining)}</span></div>
-      <div className="row"><span className="k">AASU sold</span><span className="v">{num(s.aasuSold)} / {num(s.aasuHold)}</span></div>
-      <div className="row"><span className="k">AASU remaining</span><span className="v">{num(s.aasuRemaining)}</span></div>
+      {full && (
+        <>
+          <div className="row"><span className="k">Public sold</span><span className="v">{num(s.publicSold)} / {num(s.publicCapacity)}</span></div>
+          <div className="row"><span className="k">Public remaining</span><span className="v">{num(s.publicRemaining)}</span></div>
+          <div className="row"><span className="k">AASU sold</span><span className="v">{num(s.aasuSold)} / {num(s.aasuHold)}</span></div>
+          <div className="row"><span className="k">AASU remaining</span><span className="v">{num(s.aasuRemaining)}</span></div>
+        </>
+      )}
       <div className="row"><span className="k">Total remaining</span><span className="v">{num(s.totalRemaining)}</span></div>
       <div className="row"><span className="k">Ticket revenue</span><span className="v">{usd(s.baseRevenue)}</span></div>
       <div className="row"><span className="k">Buyers paid (incl. fees)</span><span className="v">{usd(s.grossRevenue)}</span></div>
@@ -52,6 +59,10 @@ function SchoolCard({ s }: { s: SchoolStat }) {
 }
 
 export default async function Page() {
+  // Middleware has already checked the cookie; this just reads which party it is.
+  const party = await partyFromToken(cookies().get(SESSION_COOKIE)?.value);
+  const full = party ? seesAasu(party) : false;
+  const mine = (key: string) => key === party;
   let stats;
   try {
     stats = await fetchStats();
@@ -72,20 +83,22 @@ export default async function Page() {
     <main className="wrap">
       <header>
         <h1>Harvard-Yale Tailgate · Ticket Sales</h1>
-        <span className="sub">Updated {updated} ET · refreshes every minute</span>
+        <span className="sub">
+          Updated {updated} ET · refreshes every minute · Signed in as {party} · <a className="signout" href="/api/logout">Sign out</a>
+        </span>
       </header>
 
       <div className="kpi">
         <div className="card"><div className="label">Tickets sold</div><div className="value">{num(t.sold)}</div><div className="hint">of {num(t.allocation)} ({pct(t.sold, t.allocation)}%)</div></div>
-        <div className="card"><div className="label">Remaining</div><div className="value">{num(t.totalRemaining)}</div><div className="hint">{num(t.publicRemaining)} public · {num(t.aasuRemaining)} AASU</div></div>
+        <div className="card"><div className="label">Remaining</div><div className="value">{num(t.totalRemaining)}</div><div className="hint">{full ? `${num(t.publicRemaining)} public · ${num(t.aasuRemaining)} AASU` : `of ${num(t.allocation)} allocated`}</div></div>
         <div className="card"><div className="label">Ticket revenue</div><div className="value">{usd(t.baseRevenue)}</div><div className="hint">face value, before any processing deductions</div></div>
         <div className="card"><div className="label">Fees passed to buyers</div><div className="value">{usd(t.feesCollected)}</div><div className="hint">buyers paid {usd(t.grossRevenue)} in total</div></div>
-        <div className="card"><div className="label">AASU</div><div className="value">{num(t.aasuSold)} / {num(t.aasuHold)}</div><div className="hint">{num(t.aasuRemaining)} held tickets unsold</div></div>
+        {full && <div className="card"><div className="label">AASU</div><div className="value">{num(t.aasuSold)} / {num(t.aasuHold)}</div><div className="hint">{num(t.aasuRemaining)} held tickets unsold</div></div>}
       </div>
 
-      <div className="legend"><span><i style={{ background: "var(--crimson)" }} />Public</span><span><i style={{ background: "var(--gold)" }} />AASU hold</span></div>
+      {full && <div className="legend"><span><i style={{ background: "var(--crimson)" }} />Public</span><span><i style={{ background: "var(--gold)" }} />AASU hold</span></div>}
       <div className="grid">
-        {stats.schools.map((s) => <SchoolCard key={s.key} s={s} />)}
+        {stats.schools.map((s) => <SchoolCard key={s.key} s={s} full={full} mine={mine(s.key)} />)}
       </div>
 
       <div className="section-title">By ticket tier</div>
@@ -97,7 +110,7 @@ export default async function Page() {
           <tbody>
             {stats.schools.flatMap((s) =>
               s.sortedTiers.map((tier) => (
-                <tr key={`${s.key}-${tier.name}`}>
+                <tr key={`${s.key}-${tier.name}`} className={mine(s.key) ? "mine" : undefined}>
                   <td>{s.key}</td><td>{tier.name}</td>
                   <td>{num(tier.sold)}</td><td>{num(tier.total)}</td><td>{pct(tier.sold, tier.total)}%</td>
                   <td>{num(Math.max(0, tier.total - tier.sold))}</td>
@@ -110,44 +123,50 @@ export default async function Page() {
           </tfoot>
         </table>
       </div>
-      <div className="sub" style={{ marginTop: 6 }}>Qty allocated is each tier&apos;s share of the school allocation. Qty sold counts every ticket sold in the tier, whoever distributed it.</div>
+      <div className="sub" style={{ marginTop: 6 }}>Qty allocated is each tier&apos;s share of the school allocation. Qty sold counts every ticket sold in the tier.</div>
 
-      <div className="section-title">AASU sales vs holds</div>
-      <div className="card" style={{ overflowX: "auto" }}>
-        <table>
-          <thead>
-            <tr>
-              <th>School</th><th>Food Only</th><th>Food + 2 Drinks</th><th>Food + Open Bar</th>
-              <th>Total AASU sold</th><th>AASU hold</th><th>% of hold sold</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stats.schools.map((s) => {
-              const a = aasuByPackage(s);
-              return (
-                <tr key={`aasu-${s.key}`}>
-                  <td>{s.key}</td>
-                  {PACKAGES.map((p) => <td key={p}>{a[p] === undefined ? "-" : num(a[p])}</td>)}
-                  <td>{num(s.aasuSold)}</td><td>{num(s.aasuHold)}</td><td>{pct(s.aasuSold, s.aasuHold)}%</td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td>Total</td>
-              {PACKAGES.map((p) => <td key={p}>{num(stats.schools.reduce((n, s) => n + (aasuByPackage(s)[p] ?? 0), 0))}</td>)}
-              <td>{num(t.aasuSold)}</td><td>{num(t.aasuHold)}</td><td>{pct(t.aasuSold, t.aasuHold)}%</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <div className="sub" style={{ marginTop: 6 }}>VIP tiers count as Food + Open Bar; SOM sells only the Food + 2 Drinks package. AASU sales also count toward the tier table above.</div>
+      {full && (
+        <>
+        <div className="section-title">AASU sales vs holds</div>
+        <div className="card" style={{ overflowX: "auto" }}>
+          <table>
+            <thead>
+              <tr>
+                <th>School</th><th>Food Only</th><th>Food + 2 Drinks</th><th>Food + Open Bar</th>
+                <th>Total AASU sold</th><th>AASU hold</th><th>% of hold sold</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stats.schools.map((s) => {
+                const a = aasuByPackage(s);
+                return (
+                  <tr key={`aasu-${s.key}`} className={mine(s.key) ? "mine" : undefined}>
+                    <td>{s.key}</td>
+                    {PACKAGES.map((p) => <td key={p}>{a[p] === undefined ? "-" : num(a[p])}</td>)}
+                    <td>{num(s.aasuSold)}</td><td>{num(s.aasuHold)}</td><td>{pct(s.aasuSold, s.aasuHold)}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>Total</td>
+                {PACKAGES.map((p) => <td key={p}>{num(stats.schools.reduce((n, s) => n + (aasuByPackage(s)[p] ?? 0), 0))}</td>)}
+                <td>{num(t.aasuSold)}</td><td>{num(t.aasuHold)}</td><td>{pct(t.aasuSold, t.aasuHold)}%</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div className="sub" style={{ marginTop: 6 }}>VIP tiers count as Food + Open Bar; SOM sells only the Food + 2 Drinks package. AASU sales also count toward the tier table above.</div>
+        </>
+      )}
 
+      {full && (
       <div className="notes">
         AASU sales are tickets from the AASU hold ticket types (or bought with a code starting with <code>AASU_</code>). Hold sizes are read from Eventbrite: each school&apos;s allocation minus its section capacity. Public capacity is the allocation minus the hold. Refunded and cancelled tickets are excluded.
         {stats.notes.length > 0 && <div style={{ marginTop: 6 }}>{stats.notes.join(" · ")}</div>}
       </div>
+      )}
     </main>
   );
 }
