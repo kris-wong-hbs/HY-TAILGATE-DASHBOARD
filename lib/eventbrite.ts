@@ -155,6 +155,21 @@ function mapTicket(tc: TicketClass): TicketMapping | undefined {
   return undefined;
 }
 
+/** Raw ticket classes and sections, for checking mappings and caps (`/api/stats?debug=1`). */
+export async function fetchDebug() {
+  const [ticketClasses, tiers] = await Promise.all([
+    getAll<any>(`/events/${EVENT_ID}/ticket_classes/`, "ticket_classes"),
+    getAll<any>(`/events/${EVENT_ID}/inventory_tiers/`, "inventory_tiers"),
+  ]);
+  const pick = (o: any, keys: string[]) => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, o[k]]));
+  return {
+    inventoryTiers: tiers,
+    ticketClasses: ticketClasses.map((tc) =>
+      pick(tc, ["id", "name", "display_name", "inventory_tier_id", "quantity_total", "quantity_sold", "capacity", "hidden", "on_sale_status", "cost"]),
+    ),
+  };
+}
+
 export async function fetchStats(): Promise<Stats> {
   const notes: string[] = [];
 
