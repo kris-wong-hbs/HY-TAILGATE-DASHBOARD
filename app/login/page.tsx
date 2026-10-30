@@ -1,4 +1,4 @@
-import { PARTIES, parseParty } from "@/lib/auth";
+import { parseParty } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -11,10 +11,7 @@ export default function LoginPage({ searchParams }: { searchParams: { error?: st
         <p className="sub">Sign in to see ticket sales.</p>
         <label>
           Party
-          <select name="party" defaultValue={selected ?? ""} required>
-            <option value="" disabled>Choose your party</option>
-            {PARTIES.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
+          <input type="text" name="party" defaultValue={selected ?? ""} autoComplete="off" autoCapitalize="characters" spellCheck={false} required />
         </label>
         <label>
           Password

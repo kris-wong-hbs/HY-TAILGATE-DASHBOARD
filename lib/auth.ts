@@ -16,7 +16,8 @@ export function passwordFor(party: Party): string | undefined {
 }
 
 export function parseParty(input: unknown): Party | undefined {
-  const p = String(input ?? "").trim().toUpperCase();
+  let p = String(input ?? "").trim().toUpperCase();
+  if (p === "HLC") p = "HLS"; // accept the alternate spelling at login
   return (PARTIES as readonly string[]).includes(p) ? (p as Party) : undefined;
 }
 
