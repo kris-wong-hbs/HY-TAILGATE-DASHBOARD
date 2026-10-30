@@ -32,13 +32,13 @@ function aasuByPackage(s: SchoolStat): Partial<Record<Package, number>> {
 function SchoolCard({ s, full, mine }: { s: SchoolStat; full: boolean; mine: boolean }) {
   // Without the AASU view, the bar is one color for everything sold.
   const pubW = full ? pct(s.publicSold, s.allocation) : pct(s.sold, s.allocation);
-  const aasuW = full ? pct(s.aasuSold, s.allocation) : 0;
+  const aasuW = pct(s.aasuSold, s.allocation);
   return (
     <div className={mine ? "card mine" : "card"}>
       <h2>{s.name}</h2>
       <div className="bar" aria-label={`${s.sold} of ${s.allocation} sold`}>
         <span className="pub" style={{ width: `${pubW}%` }} />
-        <span className="aasu" style={{ width: `${aasuW}%` }} />
+        {full && <span className="aasu" style={{ width: `${aasuW}%` }} />}
       </div>
       <div className="sub" style={{ marginBottom: 8 }}>
         {num(s.sold)} of {num(s.allocation)} sold ({pct(s.sold, s.allocation)}%)
