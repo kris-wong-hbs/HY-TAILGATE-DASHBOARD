@@ -9,16 +9,20 @@ const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
 const PACKAGES = ["Food Only", "Food + 2 Drinks", "Food + Open Bar"] as const;
 type Package = (typeof PACKAGES)[number];
 
-/** Bucket a school's AASU sales into the three packages; VIP is the open-bar tier, otherwise go by price. */
-function aasuByPackage(s: SchoolStat): Record<Package, number> {
-  const out: Record<Package, number> = { "Food Only": 0, "Food + 2 Drinks": 0, "Food + Open Bar": 0 };
+/** VIP is the open-bar tier; SOM's single Tailgate Ticket is the 2-drink package; otherwise go by price. */
+function packageFor(tier: { name: string; price: number }): Package {
+  if ((PACKAGES as readonly string[]).includes(tier.name)) return tier.name as Package;
+  if (tier.name === "VIP" || tier.price >= 80) return "Food + Open Bar";
+  if (tier.price >= 60) return "Food + 2 Drinks";
+  return "Food Only";
+}
+
+/** A school's AASU sales per package; packages the school doesn't sell are left out. */
+function aasuByPackage(s: SchoolStat): Partial<Record<Package, number>> {
+  const out: Partial<Record<Package, number>> = {};
   for (const tier of s.sortedTiers) {
-    let p: Package;
-    if ((PACKAGES as readonly string[]).includes(tier.name)) p = tier.name as Package;
-    else if (tier.name === "VIP" || tier.price >= 80) p = "Food + Open Bar";
-    else if (tier.price >= 60) p = "Food + 2 Drinks";
-    else p = "Food Only";
-    out[p] += tier.aasuSold;
+    const p = packageFor(tier);
+    out[p] = (out[p] ?? 0) + tier.aasuSold;
   }
   return out;
 }
@@ -127,7 +131,7 @@ export default async function Page() {
               return (
                 <tr key={`aasu-${s.key}`}>
                   <td>{s.key}</td>
-                  {PACKAGES.map((p) => <td key={p}>{num(a[p])}</td>)}
+                  {PACKAGES.map((p) => <td key={p}>{a[p] === undefined ? "-" : num(a[p])}</td>)}
                   <td>{num(s.aasuSold)}</td><td>{num(s.aasuHold)}</td><td>{pct(s.aasuSold, s.aasuHold)}%</td>
                 </tr>
               );
@@ -136,13 +140,13 @@ export default async function Page() {
           <tfoot>
             <tr>
               <td>Total</td>
-              {PACKAGES.map((p) => <td key={p}>{num(stats.schools.reduce((n, s) => n + aasuByPackage(s)[p], 0))}</td>)}
+              {PACKAGES.map((p) => <td key={p}>{num(stats.schools.reduce((n, s) => n + (aasuByPackage(s)[p] ?? 0), 0))}</td>)}
               <td>{num(t.aasuSold)}</td><td>{num(t.aasuHold)}</td><td>{pct(t.aasuSold, t.aasuHold)}%</td>
             </tr>
           </tfoot>
         </table>
       </div>
-      <div className="sub" style={{ marginTop: 6 }}>VIP tiers count as Food + Open Bar and SOM&apos;s $60 Tailgate Ticket as Food + 2 Drinks. AASU sales also count toward the tier table above.</div>
+      <div className="sub" style={{ marginTop: 6 }}>VIP tiers count as Food + Open Bar; SOM sells only the Food + 2 Drinks package. AASU sales also count toward the tier table above.</div>
 
       <div className="notes">
         AASU sales are tickets from the AASU hold ticket types (or bought with a code starting with <code>AASU_</code>). Hold sizes are read from Eventbrite: each school&apos;s allocation minus its section capacity. Public capacity is the allocation minus the hold. Refunded and cancelled tickets are excluded.
