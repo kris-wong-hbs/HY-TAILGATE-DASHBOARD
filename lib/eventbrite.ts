@@ -1,4 +1,4 @@
-import { AASU_CODE_PREFIX, AASU_DISPLAY_RE, EVENT_ID, SCHOOLS, SchoolConfig, SchoolKey } from "./config";
+import { AASU_CODE_PREFIX, AASU_DISPLAY_RE, EVENT_ID, HOLD_LABELS, WAVE_PREFIX_RE, SCHOOLS, SchoolConfig, SchoolKey } from "./config";
 
 const API = "https://www.eventbriteapi.com/v3";
 
@@ -54,11 +54,20 @@ interface TicketClass {
   inventory_tier_id?: string | null;
 }
 
+interface Hold {
+  /** "I" + the inventory_tier_id its ticket classes point at. */
+  id: string;
+  name: string;
+  quantity_total: number;
+  quantity_sold: number;
+}
+
 interface InventoryTier {
   id: string;
   name: string;
   quantity_total: number;
   quantity_sold: number;
+  holds?: Hold[];
 }
 
 interface Attendee {
@@ -89,6 +98,15 @@ export interface TierStat {
   price: number;
 }
 
+/** A non-AASU hold on a school's section, e.g. HBS SA leadership tickets. */
+export interface HoldStat {
+  name: string;
+  label: string;
+  hold: number;
+  sold: number;
+  remaining: number;
+}
+
 export interface SchoolStat {
   key: SchoolKey;
   name: string;
@@ -101,8 +119,10 @@ export interface SchoolStat {
   aasuSold: number;
   aasuHold: number;
   aasuRemaining: number;
+  /** Allocation minus the AASU hold and other holds. */
   publicCapacity: number;
   publicRemaining: number;
+  otherHolds: HoldStat[];
   totalRemaining: number;
   /** Ticket face value (what the SA receives before any processing deductions). */
   baseRevenue: number;
@@ -123,6 +143,8 @@ export interface Stats {
     aasuHold: number;
     aasuRemaining: number;
     publicRemaining: number;
+    otherHold: number;
+    otherSold: number;
     totalRemaining: number;
     baseRevenue: number;
     grossRevenue: number;
@@ -137,23 +159,38 @@ function cents(m?: Money | null): number {
 
 interface TicketMapping {
   school: SchoolConfig;
-  /** True for AASU hold ticket classes (their own inventory tier, "AASU - <KEY> " display_name). */
-  aasu: boolean;
-  /** Tier label shared by regular and AASU classes, e.g. "Food Only". */
+  /** public: the school's own ticket types; aasu: AASU hold; hold: any other hold on the section. */
+  channel: "public" | "aasu" | "hold";
+  /** Eventbrite name of the hold, for channel "hold". */
+  holdName?: string;
+  /** Tier label shared by every channel, e.g. "Food Only". */
   tierName: string;
 }
 
-function mapTicket(tc: TicketClass): TicketMapping | undefined {
+interface HoldOwner {
+  school: SchoolConfig;
+  hold: Hold;
+}
+
+const isAasuHold = (name: string) => /^AASU\b/i.test(name.trim());
+
+function mapTicket(tc: TicketClass, holdOwners: Map<string, HoldOwner>): TicketMapping | undefined {
   const display = tc.display_name ?? "";
-  const tierName = tc.name.replace(AASU_DISPLAY_RE, "").trim();
+  const tierName = tc.name.replace(AASU_DISPLAY_RE, "").replace(WAVE_PREFIX_RE, "").trim();
   const bySection = SCHOOLS.find((s) => tc.inventory_tier_id === s.sectionTierId);
-  if (bySection) return { school: bySection, aasu: false, tierName };
+  if (bySection) return { school: bySection, channel: "public", tierName };
+  // Hold ticket classes point at the hold's own tier id; the section that owns the hold is the school.
+  const owner = tc.inventory_tier_id ? holdOwners.get(tc.inventory_tier_id) : undefined;
+  if (owner) {
+    const aasu = isAasuHold(owner.hold.name);
+    return { school: owner.school, channel: aasu ? "aasu" : "hold", holdName: aasu ? undefined : owner.hold.name, tierName };
+  }
   const aasuKey = display.match(AASU_DISPLAY_RE)?.[1]?.toUpperCase();
   const byAasu = aasuKey ? SCHOOLS.find((s) => s.key === aasuKey) : undefined;
-  if (byAasu) return { school: byAasu, aasu: true, tierName };
+  if (byAasu) return { school: byAasu, channel: "aasu", tierName };
   // Tier id missing on the class: fall back to the section name prefix of display_name.
   const byName = SCHOOLS.find((s) => display.startsWith(s.sectionMatch));
-  if (byName) return { school: byName, aasu: false, tierName };
+  if (byName) return { school: byName, channel: "public", tierName };
   return undefined;
 }
 
@@ -187,9 +224,13 @@ export async function fetchStats(): Promise<Stats> {
   ]);
 
   const tiersById = new Map(tiers.map((t) => [t.id, t]));
+  const holdOwners = new Map<string, HoldOwner>();
+  for (const s of SCHOOLS) {
+    for (const hold of tiersById.get(s.sectionTierId)?.holds ?? []) holdOwners.set(hold.id.replace(/^I/, ""), { school: s, hold });
+  }
   const ticketMap = new Map<string, TicketMapping>();
   for (const tc of ticketClasses) {
-    const m = mapTicket(tc);
+    const m = mapTicket(tc, holdOwners);
     if (m) ticketMap.set(tc.id, m);
     else notes.push(`Unmapped ticket type: ${tc.display_name ?? tc.name}`);
   }
@@ -198,29 +239,36 @@ export async function fetchStats(): Promise<Stats> {
   const acc = new Map<SchoolKey, SchoolStat>();
   for (const s of SCHOOLS) {
     const allocation = s.allocation;
-    // The section's capacity is the allocation minus whatever AASU currently holds back.
     const section = tiersById.get(s.sectionTierId);
-    let aasuHold = s.fallbackAasuHold;
-    if (section) aasuHold = Math.max(0, allocation - section.quantity_total);
-    else if (!tiersFailed) notes.push(`Section ${s.sectionTierId} (${s.key}) not found; using AASU_HOLDS fallback.`);
+    if (!section && !tiersFailed) notes.push(`Section ${s.sectionTierId} (${s.key}) not found; using AASU_HOLDS fallback.`);
+    const sectionHolds = section?.holds ?? [];
+    let aasuHold = section
+      ? sectionHolds.filter((h) => isAasuHold(h.name)).reduce((n, h) => n + h.quantity_total, 0)
+      : s.fallbackAasuHold;
+    if (s.aasuHoldDisplay !== undefined) aasuHold = s.aasuHoldDisplay;
+    const otherHolds: HoldStat[] = sectionHolds
+      .filter((h) => !isAasuHold(h.name))
+      .map((h) => ({ name: h.name, label: HOLD_LABELS[h.name] ?? h.name, hold: h.quantity_total, sold: 0, remaining: 0 }));
 
-    // One row per tier name, combining regular and AASU classes. The tier's max is the
-    // regular class's `capacity` (tiers add up to the allocation); AASU classes draw from
-    // the same pool, so their caps aren't added. quantity_total excludes the AASU hold.
-    const sortedTiers: TierStat[] = [];
+    // One row per tier name, combining every channel (public, AASU, other holds, later waves).
+    // Tier sizes come from config; a tier missing there falls back to its public classes' capacity.
+    const sortedTiers: TierStat[] = Object.entries(s.tiers).map(([name, total]) => ({ name, sold: 0, aasuSold: 0, total, price: 0 }));
     for (const tc of ticketClasses) {
       const m = ticketMap.get(tc.id);
       if (m?.school.key !== s.key) continue;
-      const total = tc.capacity ?? tc.quantity_total;
-      const row = sortedTiers.find((t) => t.name === m.tierName);
+      let row = sortedTiers.find((t) => t.name === m.tierName);
       if (!row) {
-        sortedTiers.push({ name: m.tierName, sold: 0, aasuSold: 0, total, price: cents(tc.cost) / 100 });
-      } else if (!m.aasu) {
-        row.total = total;
-        row.price = cents(tc.cost) / 100;
+        row = { name: m.tierName, sold: 0, aasuSold: 0, total: 0, price: 0 };
+        sortedTiers.push(row);
+        notes.push(`${s.key} tier "${m.tierName}" has no allocation in config; using Eventbrite capacity.`);
+      }
+      if (m.channel === "public") {
+        if (!(m.tierName in s.tiers)) row.total += tc.capacity ?? tc.quantity_total;
+        if (!row.price) row.price = cents(tc.cost) / 100;
       }
     }
 
+    const held = aasuHold + otherHolds.reduce((n, h) => n + h.hold, 0);
     acc.set(s.key, {
       key: s.key,
       name: s.name,
@@ -231,8 +279,9 @@ export async function fetchStats(): Promise<Stats> {
       aasuSold: 0,
       aasuHold,
       aasuRemaining: 0,
-      publicCapacity: Math.max(0, allocation - aasuHold),
+      publicCapacity: Math.max(0, allocation - held),
       publicRemaining: 0,
+      otherHolds,
       totalRemaining: 0,
       baseRevenue: 0,
       grossRevenue: 0,
@@ -257,8 +306,10 @@ export async function fetchStats(): Promise<Stats> {
     const st = acc.get(m.school.key)!;
     st.sold += 1;
     const code = a.promotional_code?.code ?? "";
-    const isAasu = m.aasu || code.toUpperCase().startsWith(AASU_CODE_PREFIX);
+    const isAasu = m.channel === "aasu" || (m.channel === "public" && code.toUpperCase().startsWith(AASU_CODE_PREFIX));
+    const otherHold = m.channel === "hold" ? st.otherHolds.find((h) => h.name === m.holdName) : undefined;
     if (isAasu) st.aasuSold += 1;
+    else if (otherHold) otherHold.sold += 1;
     else st.publicSold += 1;
     const base = cents(a.costs?.base_price);
     const gross = cents(a.costs?.gross);
@@ -277,6 +328,7 @@ export async function fetchStats(): Promise<Stats> {
     const st = acc.get(s.key)!;
     st.aasuRemaining = Math.max(0, st.aasuHold - st.aasuSold);
     st.publicRemaining = Math.max(0, st.publicCapacity - st.publicSold);
+    for (const h of st.otherHolds) h.remaining = Math.max(0, h.hold - h.sold);
     st.totalRemaining = Math.max(0, st.allocation - st.sold);
     return st;
   });
@@ -290,6 +342,8 @@ export async function fetchStats(): Promise<Stats> {
     aasuHold: sum((s) => s.aasuHold),
     aasuRemaining: sum((s) => s.aasuRemaining),
     publicRemaining: sum((s) => s.publicRemaining),
+    otherHold: sum((s) => s.otherHolds.reduce((n, h) => n + h.hold, 0)),
+    otherSold: sum((s) => s.otherHolds.reduce((n, h) => n + h.sold, 0)),
     totalRemaining: sum((s) => s.totalRemaining),
     baseRevenue: sum((s) => s.baseRevenue),
     grossRevenue: sum((s) => s.grossRevenue),

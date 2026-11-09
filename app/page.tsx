@@ -51,6 +51,9 @@ function SchoolCard({ s, full, mine }: { s: SchoolStat; full: boolean; mine: boo
           <div className="row"><span className="k">AASU remaining</span><span className="v">{num(s.aasuRemaining)}</span></div>
         </>
       )}
+      {s.otherHolds.map((h) => (
+        <div className="row" key={h.name}><span className="k">{h.label}</span><span className="v">{num(h.sold)} / {num(h.hold)}</span></div>
+      ))}
       <div className="row"><span className="k">Total remaining</span><span className="v">{num(s.totalRemaining)}</span></div>
       <div className="row"><span className="k">Ticket revenue</span><span className="v">{usd(s.baseRevenue)}</span></div>
       <div className="row"><span className="k">Buyers paid (incl. fees)</span><span className="v">{usd(s.grossRevenue)}</span></div>
@@ -90,7 +93,7 @@ export default async function Page() {
 
       <div className="kpi">
         <div className="card"><div className="label">Tickets sold</div><div className="value">{num(t.sold)}</div><div className="hint">of {num(t.allocation)} ({pct(t.sold, t.allocation)}%)</div></div>
-        <div className="card"><div className="label">Remaining</div><div className="value">{num(t.totalRemaining)}</div><div className="hint">{full ? `${num(t.publicRemaining)} public · ${num(t.aasuRemaining)} AASU` : `of ${num(t.allocation)} allocated`}</div></div>
+        <div className="card"><div className="label">Remaining</div><div className="value">{num(t.totalRemaining)}</div><div className="hint">{full ? `${num(t.publicRemaining)} public · ${num(t.aasuRemaining)} AASU · ${num(t.otherHold - t.otherSold)} other holds` : `of ${num(t.allocation)} allocated`}</div></div>
         <div className="card"><div className="label">Ticket revenue</div><div className="value">{usd(t.baseRevenue)}</div><div className="hint">face value, before any processing deductions</div></div>
         <div className="card"><div className="label">Fees passed to buyers</div><div className="value">{usd(t.feesCollected)}</div><div className="hint">buyers paid {usd(t.grossRevenue)} in total</div></div>
         {full && <div className="card"><div className="label">AASU</div><div className="value">{num(t.aasuSold)} / {num(t.aasuHold)}</div><div className="hint">{num(t.aasuRemaining)} held tickets unsold</div></div>}
@@ -123,7 +126,7 @@ export default async function Page() {
           </tfoot>
         </table>
       </div>
-      <div className="sub" style={{ marginTop: 6 }}>Qty allocated is each tier&apos;s share of the school allocation. Qty sold counts every ticket sold in the tier.</div>
+      <div className="sub" style={{ marginTop: 6 }}>Qty allocated is each tier&apos;s share of the school allocation, after tickets were redistributed between schools. Qty sold counts every ticket sold in the tier.</div>
 
       {full && (
         <>
@@ -163,7 +166,7 @@ export default async function Page() {
 
       {full && (
       <div className="notes">
-        AASU sales are tickets from the AASU hold ticket types (or bought with a code starting with <code>AASU_</code>). Hold sizes are read from Eventbrite: each school&apos;s allocation minus its section capacity. Public capacity is the allocation minus the hold. Refunded and cancelled tickets are excluded.
+        AASU sales are tickets from the AASU hold ticket types (or bought with a code starting with <code>AASU_</code>). Hold sizes are read from Eventbrite. Public capacity is the allocation minus the AASU hold and any other holds (HBS leadership, YLS inclusivity). Refunded and cancelled tickets are excluded.
         {stats.notes.length > 0 && <div style={{ marginTop: 6 }}>{stats.notes.join(" · ")}</div>}
       </div>
       )}
