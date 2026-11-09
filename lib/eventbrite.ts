@@ -368,14 +368,25 @@ export function withoutAasu(stats: Stats) {
   };
 }
 
-/** Stats as the AASU party sees them: contracted AASU hold sizes where config sets one. */
+/** Stats as the AASU party sees them: contracted hold sizes and per-tier AASU sales from config. */
 export function forAasuParty(stats: Stats): Stats {
   const schools = stats.schools.map((st) => {
-    const hold = SCHOOLS.find((s) => s.key === st.key)?.aasuHoldForAasu;
-    return hold === undefined ? st : { ...st, aasuHold: hold, aasuRemaining: Math.max(0, hold - st.aasuSold) };
+    const cfg = SCHOOLS.find((s) => s.key === st.key);
+    const extra = cfg?.aasuSoldForAasu ?? {};
+    const added = Object.values(extra).reduce((n, v) => n + v, 0);
+    const aasuHold = cfg?.aasuHoldForAasu ?? st.aasuHold;
+    const aasuSold = st.aasuSold + added;
+    return {
+      ...st,
+      aasuHold,
+      aasuSold,
+      aasuRemaining: Math.max(0, aasuHold - aasuSold),
+      sortedTiers: st.sortedTiers.map((t) => ({ ...t, aasuSold: t.aasuSold + (extra[t.name] ?? 0) })),
+    };
   });
   const totals = {
     ...stats.totals,
+    aasuSold: schools.reduce((n, s) => n + s.aasuSold, 0),
     aasuHold: schools.reduce((n, s) => n + s.aasuHold, 0),
     aasuRemaining: schools.reduce((n, s) => n + s.aasuRemaining, 0),
   };
