@@ -14,8 +14,8 @@ export interface SchoolConfig {
   allocation: number;
   /** AASU hold size used only if Eventbrite sections can't be read (normally read from them). */
   fallbackAasuHold: number;
-  /** Fixed AASU hold to show instead of Eventbrite's (e.g. to keep showing the contracted size). */
-  aasuHoldDisplay?: number;
+  /** AASU hold shown to the AASU party instead of Eventbrite's (the contracted size). */
+  aasuHoldForAasu?: number;
   /**
    * Tickets allocated to each tier, after redistribution between schools. Eventbrite holds
    * don't respect ticket-type caps (HBS tiers oversold), so the per-tier sizes live here
@@ -53,8 +53,8 @@ export const SCHOOLS: SchoolConfig[] = [
     tiers: { "Food Only": 96, "Food + 2 Drinks": 290, VIP: 114 } },
   { key: "SOM", name: "Yale School of Management", sectionTierId: "141738250", sectionMatch: "Yale School of Management", allocation: 400, fallbackAasuHold: holds.SOM, aasuCode: "AASU_SOM_2026",
     tiers: { "Tailgate Ticket": 400 } },
-  // Contract 60/75/65, minus 5 2-drink to HBS, plus 5 VIP from HBS. The AASU hold is shown at its contracted 20.
-  { key: "YLS", name: "Yale Law School", sectionTierId: "141738251", sectionMatch: "Yale Law School", allocation: 200, fallbackAasuHold: holds.YLS, aasuHoldDisplay: 20, aasuCode: "AASU_YLS_2026",
+  // Contract 60/75/65, minus 5 2-drink to HBS, plus 5 VIP from HBS. AASU sees its contracted hold of 20.
+  { key: "YLS", name: "Yale Law School", sectionTierId: "141738251", sectionMatch: "Yale Law School", allocation: 200, fallbackAasuHold: holds.YLS, aasuHoldForAasu: 20, aasuCode: "AASU_YLS_2026",
     tiers: { "Food Only": 60, "Food + 2 Drinks": 70, VIP: 70 } },
 ];
 

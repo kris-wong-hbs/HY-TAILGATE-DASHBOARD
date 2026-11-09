@@ -242,10 +242,9 @@ export async function fetchStats(): Promise<Stats> {
     const section = tiersById.get(s.sectionTierId);
     if (!section && !tiersFailed) notes.push(`Section ${s.sectionTierId} (${s.key}) not found; using AASU_HOLDS fallback.`);
     const sectionHolds = section?.holds ?? [];
-    let aasuHold = section
+    const aasuHold = section
       ? sectionHolds.filter((h) => isAasuHold(h.name)).reduce((n, h) => n + h.quantity_total, 0)
       : s.fallbackAasuHold;
-    if (s.aasuHoldDisplay !== undefined) aasuHold = s.aasuHoldDisplay;
     const otherHolds: HoldStat[] = sectionHolds
       .filter((h) => !isAasuHold(h.name))
       .map((h) => ({ name: h.name, label: HOLD_LABELS[h.name] ?? h.name, hold: h.quantity_total, sold: 0, remaining: 0 }));
@@ -367,4 +366,18 @@ export function withoutAasu(stats: Stats) {
     ),
     totals,
   };
+}
+
+/** Stats as the AASU party sees them: contracted AASU hold sizes where config sets one. */
+export function forAasuParty(stats: Stats): Stats {
+  const schools = stats.schools.map((st) => {
+    const hold = SCHOOLS.find((s) => s.key === st.key)?.aasuHoldForAasu;
+    return hold === undefined ? st : { ...st, aasuHold: hold, aasuRemaining: Math.max(0, hold - st.aasuSold) };
+  });
+  const totals = {
+    ...stats.totals,
+    aasuHold: schools.reduce((n, s) => n + s.aasuHold, 0),
+    aasuRemaining: schools.reduce((n, s) => n + s.aasuRemaining, 0),
+  };
+  return { ...stats, schools, totals };
 }

@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { partyFromToken, seesAasu, SESSION_COOKIE } from "@/lib/auth";
-import { fetchStats, SchoolStat } from "@/lib/eventbrite";
+import { fetchStats, forAasuParty, SchoolStat } from "@/lib/eventbrite";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +69,7 @@ export default async function Page() {
   let stats;
   try {
     stats = await fetchStats();
+    if (party === "AASU") stats = forAasuParty(stats);
   } catch (e: any) {
     return (
       <main className="wrap">
