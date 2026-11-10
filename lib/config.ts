@@ -30,7 +30,7 @@ export interface SchoolConfig {
 
 export const EVENT_ID = process.env.EVENTBRITE_EVENT_ID ?? "2003945094723";
 
-const DEFAULT_HOLDS: Record<SchoolKey, number> = { HBS: 140, HLS: 0, SOM: 40, YLS: 20 };
+const DEFAULT_HOLDS: Record<SchoolKey, number> = { HBS: 140, HLS: 0, SOM: 40, YLS: 7 };
 
 /** Fallback only: parse AASU_HOLDS="HBS=100,HLS=40,SOM=40,YLS=20" if present. */
 function holdsFromEnv(): Record<SchoolKey, number> {
@@ -55,8 +55,8 @@ export const SCHOOLS: SchoolConfig[] = [
     tiers: { "Food Only": 96, "Food + 2 Drinks": 290, VIP: 114 } },
   { key: "SOM", name: "Yale School of Management", sectionTierId: "141738250", sectionMatch: "Yale School of Management", allocation: 400, fallbackAasuHold: holds.SOM, aasuCode: "AASU_SOM_2026",
     tiers: { "Tailgate Ticket": 400 } },
-  // Contract 60/75/65, minus 5 2-drink to HBS, plus 5 VIP from HBS. AASU sees its contracted hold of 20, with the 6 VIP moved to public counted as AASU sales.
-  { key: "YLS", name: "Yale Law School", sectionTierId: "141738251", sectionMatch: "Yale Law School", allocation: 200, fallbackAasuHold: holds.YLS, aasuHoldForAasu: 20, aasuSoldForAasu: { VIP: 6 }, aasuCode: "AASU_YLS_2026",
+  // Contract 60/75/65, minus 5 2-drink to HBS, plus 5 VIP from HBS. AASU sees a hold of 7 (13 released back to YLS), with the 6 VIP moved to public counted as AASU sales.
+  { key: "YLS", name: "Yale Law School", sectionTierId: "141738251", sectionMatch: "Yale Law School", allocation: 200, fallbackAasuHold: holds.YLS, aasuHoldForAasu: 7, aasuSoldForAasu: { VIP: 6 }, aasuCode: "AASU_YLS_2026",
     tiers: { "Food Only": 60, "Food + 2 Drinks": 70, VIP: 70 } },
 ];
 
